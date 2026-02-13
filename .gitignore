@@ -1,0 +1,8 @@
+venv311/
+*.crdownload
+toxicity parameter weights
+misc/
+venv/
+venv311/
+ai_models/twitter/Unconfirmed*
+*.crdownload

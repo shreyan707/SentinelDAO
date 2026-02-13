@@ -103,4 +103,4 @@ export const SENTINEL_DAO_ABI = [
     "stateMutability": "view",
     "type": "function"
   }
-] as const;
+];

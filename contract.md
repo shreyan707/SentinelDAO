@@ -1,7 +1,7 @@
 **contract address**
 0xc24c387C5654566B3C53bD69913d78acd20CB35E
 
-**ABI**
+**ABI key**
 [
 	{
 		"inputs": [],

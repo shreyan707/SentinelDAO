@@ -62,23 +62,23 @@ def check_instant_flag(message):
 def get_punishment(harmful_score, severe_score, warnings):
     if warnings < 2:
         if severe_score > 0.5:
-            return "timeout_1day"
+            return "timeout_1minute"
         if harmful_score > 0.7:
-            return "timeout_6hours"
+            return "timeout_30sec"
         if harmful_score > 0.6:
-            return "timeout_1hour"
+            return "timeout_10sec"
         return "warning"
     else:
         if severe_score > 0.7:
             return "permanent_ban"
         if severe_score > 0.5:
-            return "timeout_1month"
+            return "timeout_1minute"
         if harmful_score > 0.85:
-            return "timeout_1week"
+            return "timeout_30sec"
         if harmful_score > 0.7:
-            return "timeout_1day"
+            return "timeout_10sec"
         if harmful_score > 0.6:
-            return "timeout_6hours"
+            return "timeout_5sec"
         return "timeout_1hour"
 
 

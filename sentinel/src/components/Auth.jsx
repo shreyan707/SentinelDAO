@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { Mail, Lock, User, MessageCircle, Shield, Zap } from 'lucide-react';
+import ConnectWallet from './ConnectWallet';
 
 export default function Auth({ setSession }) {
   const [loading, setLoading] = useState(false);
@@ -10,19 +11,45 @@ export default function Auth({ setSession }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
+  const [walletAddress, setWalletAddress] = useState('');
 
   const handleSignUp = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
+      if (!walletAddress) {
+        throw new Error('Please connect your MetaMask wallet before signing up.');
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { username } }
+        options: {
+          data: {
+            username,
+            wallet_address: walletAddress.toLowerCase(),
+          },
+        },
       });
 
       if (error) throw error;
+
+      if (data?.user?.id) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert(
+            {
+              id: data.user.id,
+              username,
+              wallet_address: walletAddress.toLowerCase(),
+            },
+            { onConflict: 'id' }
+          );
+
+        if (profileError) throw profileError;
+      }
+
       toast.success('Check your email for verification!', {
         icon: '📧',
         style: {
@@ -141,20 +168,32 @@ export default function Auth({ setSession }) {
 
               <form onSubmit={isLogin ? handleSignIn : handleSignUp} className="space-y-5">
                 {!isLogin && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                  >
-                    <InputField
-                      icon={<User size={20} />}
-                      type="text"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      placeholder="Choose a username"
-                      required={!isLogin}
-                    />
-                  </motion.div>
+                  <>
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                    >
+                      <InputField
+                        icon={<User size={20} />}
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        placeholder="Choose a username"
+                        required={!isLogin}
+                      />
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-2"
+                    >
+                      <p className="text-sm text-gray-300">Connect MetaMask to create your account</p>
+                      <ConnectWallet onConnected={setWalletAddress} />
+                    </motion.div>
+                  </>
                 )}
 
                 <InputField

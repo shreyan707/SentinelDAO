@@ -21,7 +21,8 @@ supabase: Client = create_client(url, service_key)
 async def scan_unprocessed():
     """Scan messages where processed_at IS NULL"""
     try:
-        resp = supabase.table("messages").select("id, content").is_("processed_at", None).limit(3).execute()
+        # ✅ SELECT user_id for warnings
+        resp = supabase.table("messages").select("id, content, user_id").is_("processed_at", None).limit(3).execute()
         messages = resp.data or []
         
         if not messages:
@@ -29,16 +30,18 @@ async def scan_unprocessed():
         
         print(f"📨 Found {len(messages)} unprocessed messages")
         
+        # IST timezone
+        ist = timezone(timedelta(hours=5, minutes=30))
+        
         for msg in messages:
             print(f"🆕 Scanning: {msg['content'][:40]}...")
             
             # Your scanner function
             from services.scanner import scan
             result = scan(msg['content'])
-            ist = timezone(timedelta(hours=5, minutes=30))
             
-            # Update message WITH PUNISHMENT
-            update = supabase.table("messages").update({
+            # ✅ Update message WITH PUNISHMENT + SCORES
+            supabase.table("messages").update({
                 "flagged": result["flagged"],
                 "reason": result["reason"], 
                 "harmful_score": result["harmful_score"],
@@ -48,8 +51,15 @@ async def scan_unprocessed():
             }).eq("id", msg["id"]).execute()
             
             status = "🚨 FLAGGED" if result["flagged"] else "✅ SAFE"
-            print(f"   {status} | Score: {result['harmful_score']:.2f} | Punishment: {result.get('punishment', 'none')}")
+            print(f"   {status} | H:{result['harmful_score']:.2f} S:{result['severe_score']:.2f} | {result.get('punishment', 'none')}")
             
+            # ✅ INCREMENT WARNINGS if flagged (NEW!)
+            if result["flagged"] and msg.get("user_id"):
+                supabase.rpc("increment_warnings", {
+                    "user_id": msg["user_id"]
+                })
+                print(f"   ⚠️  Profile warnings +1 → {msg['user_id'][:8]}...")
+    
     except Exception as e:
         print(f"❌ Error: {e}")
 

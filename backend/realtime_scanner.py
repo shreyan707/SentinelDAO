@@ -3,6 +3,7 @@ import time
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import os
+from datetime import datetime, timezone, timedelta
 
 # Load .env FIRST
 load_dotenv()
@@ -34,17 +35,20 @@ async def scan_unprocessed():
             # Your scanner function
             from services.scanner import scan
             result = scan(msg['content'])
+            ist = timezone(timedelta(hours=5, minutes=30))
             
-            # Update message
+            # Update message WITH PUNISHMENT
             update = supabase.table("messages").update({
                 "flagged": result["flagged"],
                 "reason": result["reason"], 
                 "harmful_score": result["harmful_score"],
-                "processed_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+                "punishment": result["punishment"], 
+                "severe_score": result["severe_score"],
+                "processed_at": datetime.now(ist).isoformat()
             }).eq("id", msg["id"]).execute()
             
             status = "🚨 FLAGGED" if result["flagged"] else "✅ SAFE"
-            print(f"   {status} | Score: {result['harmful_score']:.2f}")
+            print(f"   {status} | Score: {result['harmful_score']:.2f} | Punishment: {result.get('punishment', 'none')}")
             
     except Exception as e:
         print(f"❌ Error: {e}")

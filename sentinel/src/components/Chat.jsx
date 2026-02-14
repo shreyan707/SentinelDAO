@@ -83,6 +83,18 @@ export default function Chat({ session }) {
     }
   };
 
+  // 
+const scanMessage = async (messageId) => {
+  try {
+    const res = await fetch(`/api/scan-status/${messageId}`);
+    const result = await res.json();
+    console.log("AI Scan:", result);
+  } catch (e) {
+    console.error("Scan failed:", e);
+  }
+};
+
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     toast.success('Signed out successfully');

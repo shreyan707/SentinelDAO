@@ -49,6 +49,26 @@ async def scan_unprocessed():
                 "severe_score": result["severe_score"],
                 "processed_at": datetime.now(ist).isoformat()
             }).eq("id", msg["id"]).execute()
+
+
+            # When flagged → create moderation case
+            if result["flagged"] and msg.get("user_id"):
+                # 1. Get 3 random wallets from profiles
+                random_users = supabase.table("profiles").select("wallet_address").limit(3).order("random()").execute()
+                random_wallets = [row["wallet_address"] for row in random_users.data]
+                
+                # 2. Insert moderation cases
+                for wallet in random_wallets:
+                    supabase.table("moderation_cases").insert({
+                        "message_id": msg["id"],
+                        "user_id": msg["user_id"],
+                        "proposed_punishment": result["punishment"],
+                        "reviewer_wallet": wallet,
+                        "created_at": datetime.now(ist).isoformat()
+                    }).execute()
+                
+                print(f"   📋 Created moderation case | Reviewers: {len(random_wallets)} users")
+
             
             status = "🚨 FLAGGED" if result["flagged"] else "✅ SAFE"
             print(f"   {status} | H:{result['harmful_score']:.2f} S:{result['severe_score']:.2f} | {result.get('punishment', 'none')}")

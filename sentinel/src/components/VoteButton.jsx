@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useWallet } from "../hooks/useWallet";
 import { castVoteOnChain } from "../lib/sentinelSDK";
+import { assignPunishment } from "../lib/punishmentService";
+import { supabase } from "../lib/supabase";
 
-export default function VoteButton({ caseId, onVoteComplete }) {
+export default function VoteButton({ caseId, caseData, onVoteComplete }) {
   const { signer, isConnected } = useWallet();
   const [isVoting, setIsVoting] = useState(false);
   const [voted, setVoted] = useState(null);
@@ -19,6 +21,37 @@ export default function VoteButton({ caseId, onVoteComplete }) {
       const result = await castVoteOnChain(signer, caseId, decision);
       setTxHash(result.txHash);
       setVoted(decision === 1 ? "punish" : "dismiss");
+
+      // If decision is "punish", assign punishment after vote
+      if (decision === 1 && caseData) {
+        try {
+          // Get offender's user_id from wallet_address
+          const { data: offenderProfile } = await supabase
+            .from('profiles')
+            .select('id, wallet_address')
+            .eq('wallet_address', caseData.offender?.wallet_address || caseData.offender_wallet)
+            .single();
+
+          if (offenderProfile) {
+            const punishmentResult = await assignPunishment(
+              offenderProfile.id,
+              offenderProfile.wallet_address,
+              caseData.id,
+              caseData.reason || 'Toxic behavior detected',
+              caseData.severe_score || 0
+            );
+
+            if (punishmentResult.success) {
+              console.log('Punishment assigned:', punishmentResult);
+            } else {
+              console.error('Failed to assign punishment:', punishmentResult.error);
+            }
+          }
+        } catch (punishmentError) {
+          console.error('Error assigning punishment:', punishmentError);
+          // Don't fail the vote if punishment assignment fails
+        }
+      }
 
       if (onVoteComplete) {
         onVoteComplete({

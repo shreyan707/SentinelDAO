@@ -3,8 +3,10 @@ import { supabase } from '../lib/supabase';
 import Message from './Message';
 import MessageInput from './MessageInput';
 import ModerationPanel from './ModerationPanel';
+import PunishmentBanner from './PunishmentBanner';
 import ConnectWallet from './ConnectWallet';
 import { useWallet } from '../hooks/useWallet';
+import { getPunishmentStatus, canUserPost } from '../lib/punishmentService';
 import { motion } from 'framer-motion';
 import { LogOut, Users, Hash, Settings, Search, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -15,13 +17,17 @@ export default function Chat({ session }) {
   const [onlineUsers, setOnlineUsers] = useState(12);
   const [showModPanel, setShowModPanel] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [punishmentStatus, setPunishmentStatus] = useState(null);
+  const [canPost, setCanPost] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [isConnectedToRealtime, setIsConnectedToRealtime] = useState(false);
   const messagesEndRef = useRef(null);
   const { address, isConnected, connect } = useWallet();
 
   useEffect(() => {
     fetchProfile();
     fetchMessages();
-    subscribeToMessages();
+    // Note: subscription is handled in separate useEffect below
   }, []);
 
   // Auto-connect wallet on mount
@@ -30,6 +36,25 @@ export default function Chat({ session }) {
       connect();
     }
   }, [isConnected, connect]);
+
+  // Check punishment status when wallet connects
+  useEffect(() => {
+    const checkPunishmentStatus = async () => {
+      if (isConnected && address) {
+        const status = await getPunishmentStatus(address);
+        setPunishmentStatus(status);
+
+        const postStatus = await canUserPost(address);
+        setCanPost(postStatus.canPost);
+      }
+    };
+
+    checkPunishmentStatus();
+
+    // Check every 30 seconds for timeout expiration
+    const interval = setInterval(checkPunishmentStatus, 30000);
+    return () => clearInterval(interval);
+  }, [isConnected, address]);
 
   useEffect(() => {
     scrollToBottom();
@@ -49,56 +74,165 @@ export default function Chat({ session }) {
   };
 
   const fetchMessages = async () => {
-    const { data } = await supabase
-      .from('messages')
-      .select('*, profiles(username)')
-      .order('created_at', { ascending: true })
-      .limit(100);
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*, profiles!messages_user_id_fkey(username)')
+        .order('created_at', { ascending: true })
+        .limit(100);
 
-    if (data) setMessages(data);
+      if (error) throw error;
+      if (data) {
+        // Remove any optimistic messages and replace with real data
+        setMessages(data);
+      }
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      toast.error('Failed to load messages');
+    }
   };
 
-  const subscribeToMessages = () => {
+  // Realtime subscription with proper cleanup and reconnection
+  useEffect(() => {
     const channel = supabase
-      .channel('messages')
+      .channel('public:messages', {
+        config: {
+          broadcast: { self: false }, // Don't broadcast to self (we use optimistic updates)
+        }
+      })
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages'
+        },
         async (payload) => {
-          const { data: profile } = await supabase
+          console.log('🔔 New message received:', payload.new.id);
+
+          // Fetch profile for the new message
+          const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('username')
             .eq('id', payload.new.user_id)
             .single();
 
-          setMessages((prev) => [...prev, { ...payload.new, profiles: profile }]);
+          if (profileError) {
+            console.error('Error fetching profile for message:', profileError);
+            return;
+          }
+
+          const newMessage = { ...payload.new, profiles: profile };
+
+          setMessages((prev) => {
+            // Deduplicate - don't add if already exists
+            if (prev.some(m => m.id === newMessage.id)) {
+              console.log('Message already exists, skipping:', newMessage.id);
+              return prev;
+            }
+
+            // Remove optimistic message if it exists
+            const filtered = prev.filter(m => !m._optimistic);
+            return [...filtered, newMessage];
+          });
         }
       )
-      .subscribe();
+      .on('system', { event: '*' }, (event) => {
+        console.log('Realtime system event:', event);
+        if (event.type === 'reconnect') {
+          console.log('🔄 Reconnected to realtime, refreshing messages');
+          fetchMessages();
+        }
+      })
+      .subscribe((status) => {
+        console.log('Realtime subscription status:', status);
 
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Connected to realtime messages');
+          setIsConnectedToRealtime(true);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Realtime channel error');
+          setIsConnectedToRealtime(false);
+          toast.error('Realtime connection error');
+        } else if (status === 'TIMED_OUT') {
+          console.error('⏱️ Realtime connection timed out');
+          setIsConnectedToRealtime(false);
+        } else if (status === 'CLOSED') {
+          console.log('Realtime connection closed');
+          setIsConnectedToRealtime(false);
+        }
+      });
+
+    // Cleanup function
     return () => {
+      console.log('🧹 Cleaning up realtime subscription');
       supabase.removeChannel(channel);
     };
-  };
+  }, []); // Empty dependency array - only set up once
 
   const sendMessage = async (content) => {
+    if (isSending) return; // Prevent double-sending
+
     try {
       if (!address) {
         toast.error('Please connect your wallet before sending messages');
         return;
       }
 
-      const { error } = await supabase
+      // Check if user can post
+      const postStatus = await canUserPost(address);
+      if (!postStatus.canPost) {
+        toast.error(postStatus.reason || 'You are not allowed to post messages');
+        return;
+      }
+
+      setIsSending(true);
+
+      // Create optimistic message
+      const tempId = `temp-${Date.now()}-${Math.random()}`;
+      const optimisticMessage = {
+        id: tempId,
+        content,
+        user_id: session.user.id,
+        created_at: new Date().toISOString(),
+        profiles: { username: profile?.username },
+        wallet_address: address.toLowerCase(),
+        _optimistic: true // Flag for UI
+      };
+
+      // Add optimistic message immediately
+      setMessages((prev) => [...prev, optimisticMessage]);
+      console.log('✨ Added optimistic message:', tempId);
+
+      // Send to database
+      const { data, error } = await supabase
         .from('messages')
         .insert({
           user_id: session.user.id,
           content,
           wallet_address: address.toLowerCase()
-        });
+        })
+        .select('*, profiles!messages_user_id_fkey(username)')
+        .single();
 
       if (error) throw error;
+
+      console.log('✅ Message sent successfully:', data.id);
+
+      // Replace optimistic message with real one
+      setMessages((prev) =>
+        prev.map(m => m.id === tempId ? data : m)
+      );
+
     } catch (error) {
-      toast.error('Failed to send message');
+      console.error('Error sending message:', error);
+
+      // Remove optimistic message on failure
+      setMessages((prev) => prev.filter(m => !m._optimistic));
+
+      toast.error('Failed to send message. Please try again.');
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -273,7 +407,25 @@ export default function Chat({ session }) {
           </div>
         </div>
 
-        <MessageInput onSend={sendMessage} />
+        {/* Punishment Banner */}
+        {punishmentStatus && !punishmentStatus.can_post && (
+          <div className="px-4 md:px-6">
+            <div className="max-w-4xl mx-auto">
+              <PunishmentBanner
+                punishmentStatus={punishmentStatus}
+                onExpire={async () => {
+                  // Refresh punishment status when timeout expires
+                  const status = await getPunishmentStatus(address);
+                  setPunishmentStatus(status);
+                  const postStatus = await canUserPost(address);
+                  setCanPost(postStatus.canPost);
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        <MessageInput onSend={sendMessage} disabled={!canPost} />
       </div>
 
       {/* Moderation Panel */}

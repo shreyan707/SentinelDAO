@@ -391,8 +391,8 @@ export default function ModerationPanel({ isOpen, onClose }) {
                             caseItem.toxicity_score > 0.8
                               ? "#ef4444"
                               : caseItem.toxicity_score > 0.7
-                              ? "#f59e0b"
-                              : "#22c55e",
+                                ? "#f59e0b"
+                                : "#22c55e",
                           borderRadius: "3px",
                         }}
                       />
@@ -435,6 +435,7 @@ export default function ModerationPanel({ isOpen, onClose }) {
                 {!isResolved && !hasVoted && (
                   <VoteButton
                     caseId={caseId}
+                    caseData={caseItem}
                     onVoteComplete={(result) => {
                       console.log("Vote recorded:", result);
                       // Reload cases after voting

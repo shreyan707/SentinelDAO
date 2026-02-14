@@ -26,9 +26,8 @@ export default function Message({ message, isOwn }) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className={`flex gap-3 mb-6 ${isOwn ? 'flex-row-reverse' : 'flex-row'} ${
-        isOwn ? 'message-right' : 'message-left'
-      }`}
+      className={`flex gap-3 mb-6 ${isOwn ? 'flex-row-reverse' : 'flex-row'} ${isOwn ? 'message-right' : 'message-left'
+        }`}
     >
       <motion.div
         whileHover={{ scale: 1.1 }}
@@ -47,26 +46,27 @@ export default function Message({ message, isOwn }) {
 
         <motion.div
           whileHover={{ scale: 1.02 }}
-          className={`px-5 py-3 rounded-2xl shadow-xl hover-lift ${
-            isOwn
-              ? 'bg-gradient-to-br from-primary to-secondary text-white rounded-br-sm glow-primary'
-              : 'glass-strong text-gray-100 rounded-bl-sm'
-          }`}
+          className={`px-5 py-3 rounded-2xl shadow-xl hover-lift ${isOwn
+            ? 'bg-gradient-to-br from-primary to-secondary text-white rounded-br-sm glow-primary'
+            : 'glass-strong text-gray-100 rounded-bl-sm'
+            }`}
         >
           <p className="break-words leading-relaxed">{message.content}</p>
-          
-          <div className={`flex items-center gap-2 mt-2 text-xs ${
-            isOwn ? 'text-white/70' : 'text-gray-400'
-          }`}>
+
+          <div className={`flex items-center gap-2 mt-2 text-xs ${isOwn ? 'text-white/70' : 'text-gray-400'
+            }`}>
             <span>
               {new Date(message.created_at).toLocaleTimeString([], {
                 hour: '2-digit',
                 minute: '2-digit'
               })}
             </span>
-            {isOwn && (
+            {message._optimistic && (
+              <span className="text-xs opacity-70 italic">Sending...</span>
+            )}
+            {isOwn && !message._optimistic && (
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/>
+                <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
               </svg>
             )}
           </div>

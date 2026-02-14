@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { Mail, Lock, User, MessageCircle, Shield, Zap } from 'lucide-react';
+import ConnectWallet from './ConnectWallet';
 
 export default function Auth({ setSession }) {
   const [loading, setLoading] = useState(false);
@@ -10,19 +11,47 @@ export default function Auth({ setSession }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
+  const [walletAddress, setWalletAddress] = useState('');
 
   const handleSignUp = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
+      if (!walletAddress) {
+        throw new Error('Please connect your MetaMask wallet before signing up.');
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { username } }
+        options: {
+          data: {
+            username,
+            wallet_address: walletAddress.toLowerCase(),
+          },
+        },
       });
 
       if (error) throw error;
+
+      if (data?.session?.user?.id) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert(
+            {
+              id: data.session.user.id,
+              username,
+              wallet_address: walletAddress.toLowerCase(),
+            },
+            { onConflict: 'id' }
+          );
+
+        if (profileError) {
+          console.error('Profile wallet sync failed after signup:', profileError.message);
+        }
+      }
+
       toast.success('Check your email for verification!', {
         icon: '📧',
         style: {
@@ -50,6 +79,30 @@ export default function Auth({ setSession }) {
       });
 
       if (error) throw error;
+
+      const signedInUser = data?.session?.user;
+      if (signedInUser) {
+        const walletFromMetadata = signedInUser.user_metadata?.wallet_address;
+        const usernameFromMetadata = signedInUser.user_metadata?.username;
+
+        if (walletFromMetadata) {
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .upsert(
+              {
+                id: signedInUser.id,
+                username: usernameFromMetadata,
+                wallet_address: walletFromMetadata.toLowerCase(),
+              },
+              { onConflict: 'id' }
+            );
+
+          if (profileError) {
+            console.error('Profile wallet sync failed after sign in:', profileError.message);
+          }
+        }
+      }
+
       setSession(data.session);
       toast.success('Welcome back!', { icon: '👋' });
     } catch (error) {
@@ -66,14 +119,14 @@ export default function Auth({ setSession }) {
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-secondary/20 rounded-full blur-3xl float" style={{ animationDelay: '3s' }} />
       </div>
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
         className="w-full max-w-6xl relative z-10"
       >
         <div className="grid md:grid-cols-2 gap-8 items-center">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: -50 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
@@ -88,7 +141,7 @@ export default function Auth({ setSession }) {
                   Sentinel
                 </h1>
               </div>
-              
+
               <p className="text-gray-300 text-lg mb-8">
                 Experience the future of secure messaging with real-time communication and end-to-end encryption.
               </p>
@@ -101,7 +154,7 @@ export default function Auth({ setSession }) {
             </div>
           </motion.div>
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
@@ -141,20 +194,32 @@ export default function Auth({ setSession }) {
 
               <form onSubmit={isLogin ? handleSignIn : handleSignUp} className="space-y-5">
                 {!isLogin && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                  >
-                    <InputField
-                      icon={<User size={20} />}
-                      type="text"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      placeholder="Choose a username"
-                      required={!isLogin}
-                    />
-                  </motion.div>
+                  <>
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                    >
+                      <InputField
+                        icon={<User size={20} />}
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        placeholder="Choose a username"
+                        required={!isLogin}
+                      />
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-2"
+                    >
+                      <p className="text-sm text-gray-300">Connect MetaMask to create your account</p>
+                      <ConnectWallet onConnected={setWalletAddress} />
+                    </motion.div>
+                  </>
                 )}
 
                 <InputField

@@ -2,14 +2,18 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import Message from './Message';
 import MessageInput from './MessageInput';
+import ModerationPanel from './ModerationPanel';
+import ConnectWallet from './ConnectWallet';
 import { motion } from 'framer-motion';
-import { LogOut, Users, Hash, Settings, Search } from 'lucide-react';
+import { LogOut, Users, Hash, Settings, Search, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function Chat({ session }) {
   const [messages, setMessages] = useState([]);
   const [profile, setProfile] = useState(null);
   const [onlineUsers, setOnlineUsers] = useState(12);
+  const [showModPanel, setShowModPanel] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -90,6 +94,7 @@ export default function Chat({ session }) {
 
   return (
     <div className="h-screen flex bg-darker animated-bg">
+      {/* Sidebar */}
       <motion.aside
         initial={{ x: -300 }}
         animate={{ x: 0 }}
@@ -121,8 +126,32 @@ export default function Chat({ session }) {
               </div>
             </div>
           </div>
+
+          {/* Moderation Button */}
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowModPanel(!showModPanel)}
+            className="w-full mt-3 glass rounded-xl p-3 hover-lift cursor-pointer hover:bg-purple-500/20 border border-white/10 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Shield size={18} className="text-purple-400" />
+              <span className="font-medium text-purple-300">Moderation</span>
+              {pendingCount > 0 && (
+                <div className="ml-auto w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                  <span className="text-xs font-bold">{pendingCount}</span>
+                </div>
+              )}
+            </div>
+          </motion.button>
         </div>
 
+        {/* Wallet Connection */}
+        <div className="p-4 border-t border-white/10">
+          <ConnectWallet />
+        </div>
+
+        {/* User Profile */}
         <div className="p-4 border-t border-white/10">
           <div className="glass rounded-xl p-4 flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center font-semibold relative">
@@ -145,6 +174,7 @@ export default function Chat({ session }) {
         </div>
       </motion.aside>
 
+      {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
         <motion.header
           initial={{ y: -100 }}
@@ -166,6 +196,20 @@ export default function Chat({ session }) {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Moderation Button for Mobile */}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowModPanel(!showModPanel)}
+                className="relative w-10 h-10 rounded-xl glass hover:bg-purple-500/20 flex items-center justify-center transition-colors"
+              >
+                <Shield size={18} className="text-purple-400" />
+                {pendingCount > 0 && (
+                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                    <span className="text-[10px] font-bold">{pendingCount}</span>
+                  </div>
+                )}
+              </motion.button>
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -216,6 +260,12 @@ export default function Chat({ session }) {
 
         <MessageInput onSend={sendMessage} />
       </div>
+
+      {/* Moderation Panel */}
+      <ModerationPanel
+        isOpen={showModPanel}
+        onClose={() => setShowModPanel(false)}
+      />
     </div>
   );
 }

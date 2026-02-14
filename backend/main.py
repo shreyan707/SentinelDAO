@@ -1,7 +1,10 @@
+# backend/main.py
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from supabase_client import supabase
 from services.scanner import scan
+from routes.moderation import router as moderation_router
 
 app = FastAPI(title="Sentinel Backend")
 
@@ -12,9 +15,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register moderation routes
+app.include_router(moderation_router)
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 @app.get("/messages-simple")
 def get_messages_simple():
@@ -25,9 +33,14 @@ def get_messages_simple():
         "count": len(resp.data or [])
     }
 
+
 @app.get("/scan-new-messages")
 def scan_new_messages(limit: int = 10):
-    resp = supabase.from_("messages").select("id,user_id,content").order("created_at", desc=True).limit(limit).execute()
+    resp = supabase.from_("messages") \
+        .select("id,user_id,content") \
+        .order("created_at", desc=True) \
+        .limit(limit) \
+        .execute()
     
     if not resp.data:
         return {"status": "no_messages", "count": 0}

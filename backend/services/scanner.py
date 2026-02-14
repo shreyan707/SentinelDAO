@@ -1,6 +1,9 @@
 # backend/services/scanner.py
 
 from transformers import pipeline
+import os
+
+
 
 print("Loading model...")
 classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")

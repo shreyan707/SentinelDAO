@@ -73,6 +73,10 @@ export default function Auth({ setSession }) {
     setLoading(true);
 
     try {
+      if (!walletAddress) {
+        throw new Error('Please connect your MetaMask wallet to sign in.');
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -83,23 +87,28 @@ export default function Auth({ setSession }) {
       const signedInUser = data?.session?.user;
       if (signedInUser) {
         const walletFromMetadata = signedInUser.user_metadata?.wallet_address;
+
+        // Verify wallet ownership
+        if (walletFromMetadata && walletFromMetadata.toLowerCase() !== walletAddress.toLowerCase()) {
+          await supabase.auth.signOut();
+          throw new Error('Please connect the wallet address associated with this account.');
+        }
+
+        // Sync wallet to profile
         const usernameFromMetadata = signedInUser.user_metadata?.username;
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert(
+            {
+              id: signedInUser.id,
+              username: usernameFromMetadata,
+              wallet_address: walletAddress.toLowerCase(),
+            },
+            { onConflict: 'id' }
+          );
 
-        if (walletFromMetadata) {
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .upsert(
-              {
-                id: signedInUser.id,
-                username: usernameFromMetadata,
-                wallet_address: walletFromMetadata.toLowerCase(),
-              },
-              { onConflict: 'id' }
-            );
-
-          if (profileError) {
-            console.error('Profile wallet sync failed after sign in:', profileError.message);
-          }
+        if (profileError) {
+          console.error('Profile wallet sync failed after sign in:', profileError.message);
         }
       }
 
@@ -172,21 +181,19 @@ export default function Auth({ setSession }) {
               <div className="flex gap-2 p-1 glass rounded-2xl mb-8">
                 <button
                   onClick={() => setIsLogin(true)}
-                  className={`flex-1 py-3 rounded-xl font-medium transition-all duration-300 ${
-                    isLogin
-                      ? 'bg-gradient-to-r from-primary to-secondary text-white shadow-lg glow-primary'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
+                  className={`flex-1 py-3 rounded-xl font-medium transition-all duration-300 ${isLogin
+                    ? 'bg-gradient-to-r from-primary to-secondary text-white shadow-lg glow-primary'
+                    : 'text-gray-400 hover:text-white'
+                    }`}
                 >
                   Sign In
                 </button>
                 <button
                   onClick={() => setIsLogin(false)}
-                  className={`flex-1 py-3 rounded-xl font-medium transition-all duration-300 ${
-                    !isLogin
-                      ? 'bg-gradient-to-r from-primary to-secondary text-white shadow-lg glow-primary'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
+                  className={`flex-1 py-3 rounded-xl font-medium transition-all duration-300 ${!isLogin
+                    ? 'bg-gradient-to-r from-primary to-secondary text-white shadow-lg glow-primary'
+                    : 'text-gray-400 hover:text-white'
+                    }`}
                 >
                   Sign Up
                 </button>
@@ -194,33 +201,28 @@ export default function Auth({ setSession }) {
 
               <form onSubmit={isLogin ? handleSignIn : handleSignUp} className="space-y-5">
                 {!isLogin && (
-                  <>
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                    >
-                      <InputField
-                        icon={<User size={20} />}
-                        type="text"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        placeholder="Choose a username"
-                        required={!isLogin}
-                      />
-                    </motion.div>
-
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="space-y-2"
-                    >
-                      <p className="text-sm text-gray-300">Connect MetaMask to create your account</p>
-                      <ConnectWallet onConnected={setWalletAddress} />
-                    </motion.div>
-                  </>
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                  >
+                    <InputField
+                      icon={<User size={20} />}
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="Choose a username"
+                      required={!isLogin}
+                    />
+                  </motion.div>
                 )}
+
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-300">
+                    {isLogin ? 'Connect your MetaMask wallet to sign in' : 'Connect MetaMask to create your account'}
+                  </p>
+                  <ConnectWallet onConnected={setWalletAddress} />
+                </div>
 
                 <InputField
                   icon={<Mail size={20} />}

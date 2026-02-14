@@ -4,6 +4,7 @@ import Message from './Message';
 import MessageInput from './MessageInput';
 import ModerationPanel from './ModerationPanel';
 import ConnectWallet from './ConnectWallet';
+import { useWallet } from '../hooks/useWallet';
 import { motion } from 'framer-motion';
 import { LogOut, Users, Hash, Settings, Search, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -15,12 +16,20 @@ export default function Chat({ session }) {
   const [showModPanel, setShowModPanel] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const messagesEndRef = useRef(null);
+  const { address, isConnected, connect } = useWallet();
 
   useEffect(() => {
     fetchProfile();
     fetchMessages();
     subscribeToMessages();
   }, []);
+
+  // Auto-connect wallet on mount
+  useEffect(() => {
+    if (!isConnected && window.ethereum) {
+      connect();
+    }
+  }, [isConnected, connect]);
 
   useEffect(() => {
     scrollToBottom();
@@ -45,7 +54,7 @@ export default function Chat({ session }) {
       .select('*, profiles(username)')
       .order('created_at', { ascending: true })
       .limit(100);
-    
+
     if (data) setMessages(data);
   };
 
@@ -61,7 +70,7 @@ export default function Chat({ session }) {
             .select('username')
             .eq('id', payload.new.user_id)
             .single();
-          
+
           setMessages((prev) => [...prev, { ...payload.new, profiles: profile }]);
         }
       )
@@ -74,11 +83,17 @@ export default function Chat({ session }) {
 
   const sendMessage = async (content) => {
     try {
+      if (!address) {
+        toast.error('Please connect your wallet before sending messages');
+        return;
+      }
+
       const { error } = await supabase
         .from('messages')
         .insert({
           user_id: session.user.id,
-          content
+          content,
+          wallet_address: address.toLowerCase()
         });
 
       if (error) throw error;
